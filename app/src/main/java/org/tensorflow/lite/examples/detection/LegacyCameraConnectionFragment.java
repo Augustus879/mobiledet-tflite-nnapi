@@ -17,9 +17,11 @@ package org.tensorflow.lite.examples.detection;
  */
 
 import android.app.Fragment;
+import android.content.Context;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
 import android.hardware.Camera.CameraInfo;
+import android.hardware.camera2.CameraManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -67,7 +69,7 @@ public class LegacyCameraConnectionFragment extends Fragment {
         public void onSurfaceTextureAvailable(
             final SurfaceTexture texture, final int width, final int height) {
           availableSurfaceTexture = texture;
-          startCamera();
+          //startCamera();
         }
 
         @Override
@@ -118,7 +120,8 @@ public class LegacyCameraConnectionFragment extends Fragment {
     // the SurfaceTextureListener).
 
     if (textureView.isAvailable()) {
-      startCamera();
+
+      //startCamera();
     } else {
       textureView.setSurfaceTextureListener(surfaceTextureListener);
     }

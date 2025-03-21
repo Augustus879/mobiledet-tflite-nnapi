@@ -15,9 +15,14 @@ limitations under the License.
 
 package org.tensorflow.lite.examples.detection.env;
 
+import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
 import android.os.Environment;
+import android.util.Log;
+import android.view.View;
+
 import java.io.File;
 import java.io.FileOutputStream;
 
@@ -216,4 +221,39 @@ public class ImageUtils {
 
     return matrix;
   }
+
+  public static Bitmap scaleImageToFitWindow(Bitmap originalBitmap, View rootView) {
+    if (originalBitmap == null) {
+      throw new IllegalArgumentException("Original bitmap cannot be null.");
+    }
+
+    // 获取窗口尺寸
+    int windowWidth = rootView.getWidth();  // 窗口宽度
+    int windowHeight = rootView.getHeight(); // 窗口高度
+
+    if (windowWidth == 0 || windowHeight == 0) {
+      throw new IllegalStateException("Window size is not initialized.");
+    }
+
+    Log.d("ImageUtils", "Window size: " + windowWidth + "x" + windowHeight);
+
+    // 获取原始图片尺寸
+    int imageWidth = originalBitmap.getWidth();
+    int imageHeight = originalBitmap.getHeight();
+
+    Log.d("ImageUtils", "Original image size: " + imageWidth + "x" + imageHeight);
+
+    // 计算缩放比例
+    float scaleWidth = (float) windowWidth / imageWidth;
+    float scaleHeight = (float) windowHeight / imageHeight;
+    float scaleFactor = Math.min(scaleWidth, scaleHeight); // 等比例缩放
+
+    // 计算缩放后的宽高
+    int scaledWidth = (int) (imageWidth * scaleFactor);
+    int scaledHeight = (int) (imageHeight * scaleFactor);
+
+    // 缩放图片
+    return Bitmap.createScaledBitmap(originalBitmap, scaledWidth, scaledHeight, true);
+  }
+
 }

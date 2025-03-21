@@ -28,6 +28,7 @@ import android.graphics.Typeface;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Environment;
 import android.os.SystemClock;
+import android.util.Log;
 import android.util.Size;
 import android.util.TypedValue;
 import android.widget.Toast;
@@ -125,6 +126,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
               TF_OD_API_LABELS_FILE,
               TF_OD_API_INPUT_SIZE,
               TF_OD_API_IS_QUANTIZED);
+      Log.d("ttd", "detector:"+detector);
       cropSize = TF_OD_API_INPUT_SIZE;
     } catch (final IOException e) {
       e.printStackTrace();
@@ -140,9 +142,9 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     previewHeight = size.getHeight();
 
     sensorOrientation = rotation - getScreenOrientation();
-    LOGGER.i("Camera orientation relative to screen canvas: %d", sensorOrientation);
+    Log.d("ttd","Camera orientation relative to screen canvas:"+ sensorOrientation);
 
-    LOGGER.i("Initializing at size %dx%d", previewWidth, previewHeight);
+    Log.d("ttd","Initializing at size " + previewWidth+"x"+previewHeight);
     rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
     croppedBitmap = Bitmap.createBitmap(cropSize, cropSize, Config.ARGB_8888);
 
@@ -169,6 +171,186 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
     tracker.setFrameConfiguration(previewWidth, previewHeight, sensorOrientation);
   }
+
+
+  public void initFakeDetector() {
+    Log.d("ttd", "detector:"+detector);
+    int cropSize = TF_OD_API_INPUT_SIZE;
+    try {
+      detector =
+              TFLiteObjectDetectionAPIModel.create(
+                      getAssets(),
+                      TF_OD_API_MODEL_FILE,
+                      TF_OD_API_LABELS_FILE,
+                      TF_OD_API_INPUT_SIZE,
+                      TF_OD_API_IS_QUANTIZED);
+      Log.d("ttd", "detector:"+detector);
+      cropSize = TF_OD_API_INPUT_SIZE;
+    } catch (final IOException e) {
+      e.printStackTrace();
+      LOGGER.e(e, "Exception initializing classifier!");
+      Toast toast =
+              Toast.makeText(
+                      getApplicationContext(), "Classifier could not be initialized", Toast.LENGTH_SHORT);
+      toast.show();
+      finish();
+    }
+  }
+  @Override
+  protected void fakePreviewSizeChosen() {
+    Log.d("ttd", "fakePreviewSizeChosen:");
+    final float textSizePx =
+            TypedValue.applyDimension(
+                    TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, getResources().getDisplayMetrics());
+    borderedText = new BorderedText(textSizePx);
+    borderedText.setTypeface(Typeface.MONOSPACE);
+    borderedText.setInteriorColor(Color.RED);
+
+    tracker = new MultiBoxTracker(this);
+
+    int cropSize = TF_OD_API_INPUT_SIZE;
+    previewWidth = localBitmap.getWidth();
+    previewHeight = localBitmap.getHeight();
+
+    sensorOrientation = getScreenOrientation();
+    Log.d("ttd","Camera orientation relative to screen canvas: "+ sensorOrientation);
+
+    Log.d("ttd","Initializing at size "+previewWidth + " "+previewHeight);
+    rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
+    croppedBitmap = Bitmap.createBitmap(cropSize, cropSize, Config.ARGB_8888);
+
+    frameToCropTransform =
+            ImageUtils.getTransformationMatrix(
+                    previewWidth, previewHeight,
+                    cropSize, cropSize,
+                    sensorOrientation, MAINTAIN_ASPECT);
+
+    cropToFrameTransform = new Matrix();
+    frameToCropTransform.invert(cropToFrameTransform);
+
+    trackingOverlay = (OverlayView) findViewById(R.id.tracking_overlay);
+
+    Paint picPaint = new Paint();
+    Bitmap windowSizeBitmap =
+            ImageUtils.scaleImageToFitWindow(localBitmap, trackingOverlay);
+    trackingOverlay.addCallback(
+            new DrawCallback() {
+              @Override
+              public void drawCallback(final Canvas canvas) {
+                canvas.drawBitmap(windowSizeBitmap, 0, 0, picPaint);
+              }
+            });
+
+    trackingOverlay.addCallback(
+            new DrawCallback() {
+              @Override
+              public void drawCallback(final Canvas canvas) {
+                tracker.draw(canvas);
+                if (isDebug()) {
+                  tracker.drawDebug(canvas);
+                }
+              }
+            });
+
+
+    tracker.setFrameConfiguration(previewWidth, previewHeight, sensorOrientation);
+  }
+
+  @Override
+  protected  void fakeProcessImage() {
+//    ++timestamp;
+//    final long currTimestamp = timestamp;
+    Log.d("ttd", "fakeProcessImage:");
+    trackingOverlay.postInvalidate();
+
+    // 假设 bitmap 是一个有效的 Bitmap 对象
+    int width = localBitmap.getWidth();
+    int height = localBitmap.getHeight();
+
+    // 创建一个数组来存储像素数据
+    int[] pixels = new int[width * height];
+
+    // 将 Bitmap 的像素数据提取到数组中
+    localBitmap.getPixels(pixels, 0, width, 0, 0, width, height);
+
+    rgbFrameBitmap.setPixels(pixels, 0, previewWidth, 0, 0, previewWidth, previewHeight);
+
+//    readyForNextImage();
+
+    final Canvas canvas = new Canvas(croppedBitmap);
+    canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
+    // For examining the actual TF input.
+    if (SAVE_PREVIEW_BITMAP) {
+      ImageUtils.saveBitmap(croppedBitmap);
+    }
+
+    runInBackground(
+            new Runnable() {
+              @Override
+              public void run() {
+                Log.d("ttd","Running detection on image ");
+                final long startTime = SystemClock.uptimeMillis();
+                final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);
+                lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
+
+                cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
+                final Canvas canvas = new Canvas(cropCopyBitmap);
+                final Paint paint = new Paint();
+                paint.setColor(Color.RED);
+                paint.setStyle(Style.STROKE);
+                paint.setStrokeWidth(2.0f);
+
+                float minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
+                switch (MODE) {
+                  case TF_OD_API:
+                    minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
+                    break;
+                }
+
+                final List<Classifier.Recognition> mappedRecognitions =
+                        new LinkedList<Classifier.Recognition>();
+                Log.d("ttd","Running detection on image 2");
+                for (final Classifier.Recognition result : results) {
+                  final RectF location = result.getLocation();
+                  if (location != null && result.getConfidence() >= minimumConfidence) {
+                    canvas.drawRect(location, paint);
+
+                    cropToFrameTransform.mapRect(location);
+
+                    result.setLocation(location);
+                    mappedRecognitions.add(result);
+
+                    if (!DETECTIONS_OUTPUT_MAP.containsKey(result.getTitle())) {
+                      DETECTIONS_OUTPUT_MAP.put(result.getTitle(), 0);
+                    }
+
+                    DETECTIONS_OUTPUT_MAP.put(result.getTitle(), DETECTIONS_OUTPUT_MAP.get(result.getTitle()) + 1);
+                  }
+                }
+                Log.d("ttd","Running detection on image 3");
+                tracker.trackResults(mappedRecognitions, 0);
+                trackingOverlay.postInvalidate();
+
+                computingDetection = false;
+                if (isUsingNNAPI) {
+                  nnapiTimes.add(lastProcessingTimeMs);
+                } else {
+                  nonNNAPITimes.add(lastProcessingTimeMs);
+                }
+                Log.d("ttd","Running detection on image 4");
+                runOnUiThread(
+                        new Runnable() {
+                          @Override
+                          public void run() {
+                            showFrameInfo(previewWidth + "x" + previewHeight);
+                            showCropInfo(cropCopyBitmap.getWidth() + "x" + cropCopyBitmap.getHeight());
+                            showInference(lastProcessingTimeMs + "ms");
+                          }
+                        });
+              }
+            });
+  }
+
 
   @Override
   protected void processImage() {
@@ -198,7 +380,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
         new Runnable() {
           @Override
           public void run() {
-            //LOGGER.i("Running detection on image " + currTimestamp);
+            //Log.d("ttd","Running detection on image " + currTimestamp);
             final long startTime = SystemClock.uptimeMillis();
             final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);
             lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
@@ -337,5 +519,11 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     LOGGER.d("Data written to directory");
 
     super.onStop();
+  }
+
+  @Override
+  public synchronized void onStart() {
+    super.onStart();
+    initFakeDetector();
   }
 }

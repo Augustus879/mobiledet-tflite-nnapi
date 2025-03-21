@@ -36,6 +36,7 @@ import java.util.Map;
 import java.util.Vector;
 import org.tensorflow.lite.Interpreter;
 import org.tensorflow.lite.examples.detection.env.Logger;
+import org.tensorflow.lite.Interpreter.Options;
 
 /**
  * Wrapper for frozen detection models trained using the Tensorflow Object Detection API:
@@ -47,7 +48,9 @@ import org.tensorflow.lite.examples.detection.env.Logger;
  * - https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tensorflowlite.md#running-our-model-on-android
  */
 public class TFLiteObjectDetectionAPIModel implements Classifier {
-  private static final Logger LOGGER = new Logger();
+  private Interpreter tfLite;
+  private Options op;
+    private static final Logger LOGGER = new Logger();
 
   // Only return this many results.
   private static final int NUM_DETECTIONS = 100;
@@ -77,7 +80,9 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
 
   private ByteBuffer imgData;
 
-  private Interpreter tfLite;
+
+
+
 
   private TFLiteObjectDetectionAPIModel() {}
 
@@ -122,8 +127,11 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
 
     d.inputSize = inputSize;
 
+    d.op = new Options();
+    d.op.setNumThreads(NUM_THREADS);
+
     try {
-      d.tfLite = new Interpreter(loadModelFile(assetManager, modelFilename));
+      d.tfLite = new Interpreter(loadModelFile(assetManager, modelFilename), d.op);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -140,7 +148,7 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     d.imgData.order(ByteOrder.nativeOrder());
     d.intValues = new int[d.inputSize * d.inputSize];
 
-    d.tfLite.setNumThreads(NUM_THREADS);
+    //d.tfLite.Options.setNumThreads(NUM_THREADS);
     d.outputLocations = new float[1][NUM_DETECTIONS][4];
     d.outputClasses = new float[1][NUM_DETECTIONS];
     d.outputScores = new float[1][NUM_DETECTIONS];
@@ -240,12 +248,14 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
   public void close() {}
 
   public void setNumThreads(int num_threads) {
-    if (tfLite != null) tfLite.setNumThreads(num_threads);
+    if (op != null) {
+      op.setNumThreads(num_threads);
+    }
   }
 
   @Override
   public void setUseNNAPI(boolean isChecked) {
     LOGGER.d("isChecked: " + isChecked);
-    if (tfLite != null) tfLite.setUseNNAPI(isChecked);
+    if (op != null) op.setUseNNAPI(isChecked);
   }
 }

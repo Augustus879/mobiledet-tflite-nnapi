@@ -19,7 +19,10 @@ package org.tensorflow.lite.examples.detection;
 import android.Manifest;
 import android.app.Fragment;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.hardware.Camera;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
@@ -29,6 +32,7 @@ import android.media.Image;
 import android.media.Image.Plane;
 import android.media.ImageReader;
 import android.media.ImageReader.OnImageAvailableListener;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -38,18 +42,26 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.appcompat.widget.Toolbar;
+
+import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
+
+import java.io.FileNotFoundException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
+
+import org.jetbrains.annotations.Nullable;
 import org.tensorflow.lite.examples.detection.env.ImageUtils;
 import org.tensorflow.lite.examples.detection.env.Logger;
 
@@ -77,7 +89,7 @@ public abstract class CameraActivity extends AppCompatActivity
   private Runnable imageConverter;
 
   private LinearLayout bottomSheetLayout;
-  private LinearLayout gestureLayout;
+  public LinearLayout gestureLayout;
   private BottomSheetBehavior<LinearLayout> sheetBehavior;
 
   protected TextView frameValueTextView, cropValueTextView, inferenceTimeTextView;
@@ -86,9 +98,13 @@ public abstract class CameraActivity extends AppCompatActivity
   private SwitchCompat apiSwitchCompat;
   private TextView threadsTextView;
 
+  private Button localImageButton;
+  public Bitmap localBitmap;
+  public Uri localImageUri;
+
   @Override
   protected void onCreate(final Bundle savedInstanceState) {
-    LOGGER.d("onCreate " + this);
+    Log.d("ttd", "onCreate " + this);
     super.onCreate(null);
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
@@ -111,6 +127,13 @@ public abstract class CameraActivity extends AppCompatActivity
     gestureLayout = findViewById(R.id.gesture_layout);
     sheetBehavior = BottomSheetBehavior.from(bottomSheetLayout);
     bottomSheetArrowImageView = findViewById(R.id.bottom_sheet_arrow);
+    localImageButton = findViewById(R.id.local_image_button);
+    localImageButton.setOnClickListener(v -> {
+      if (checkAndRequestPermissions()) {
+        openGallery();
+      }
+    });
+
 
     ViewTreeObserver vto = gestureLayout.getViewTreeObserver();
     vto.addOnGlobalLayoutListener(
@@ -169,6 +192,53 @@ public abstract class CameraActivity extends AppCompatActivity
     minusImageView.setOnClickListener(this);
   }
 
+
+  private void openGallery() {
+    Intent intent = new Intent(Intent.ACTION_PICK);
+    intent.setType("image/*");
+    startActivityForResult(intent, 1);
+  }
+
+  private boolean checkAndRequestPermissions() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED ||
+              checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+        requestPermissions(new String[]{
+                Manifest.permission.READ_EXTERNAL_STORAGE,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+        }, 1);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @Override
+  protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+    super.onActivityResult(requestCode, resultCode, data);
+
+    if (resultCode == RESULT_OK) {
+      if (requestCode == 1 && data != null) {
+        // 用户从相册选择了图片
+        Uri selectedImageUri = data.getData();
+        handleSelectedImage(selectedImageUri);
+      }
+    }
+  }
+
+  private void handleSelectedImage(Uri imageUri) {
+    try {
+      // 将选中的图片显示到 ImageView 中
+      InputStream inputStream = getContentResolver().openInputStream(imageUri);
+      localBitmap = BitmapFactory.decodeStream(inputStream);
+      localImageUri = imageUri;
+      Log.d("ttd", "imageUri"+imageUri);
+
+    } catch (FileNotFoundException e) {
+      e.printStackTrace();
+      Toast.makeText(this, "无法加载图片", Toast.LENGTH_SHORT).show();
+    }
+  }
   protected int[] getRgbBytes() {
     imageConverter.run();
     return rgbBytes;
@@ -293,23 +363,27 @@ public abstract class CameraActivity extends AppCompatActivity
 
   @Override
   public synchronized void onStart() {
-    LOGGER.d("onStart " + this);
+    Log.d("ttd", "onStart " + this);
     super.onStart();
   }
 
   @Override
   public synchronized void onResume() {
-    LOGGER.d("onResume " + this);
+    Log.d("ttd", "onResume " + this);
     super.onResume();
 
     handlerThread = new HandlerThread("inference");
     handlerThread.start();
     handler = new Handler(handlerThread.getLooper());
+    if(localBitmap != null) {
+      CameraActivity.this.fakePreviewSizeChosen();
+      CameraActivity.this.fakeProcessImage();
+    }
   }
 
   @Override
   public synchronized void onPause() {
-    LOGGER.d("onPause " + this);
+    Log.d("ttd", "onPause " + this);
 
     handlerThread.quitSafely();
     try {
@@ -325,13 +399,13 @@ public abstract class CameraActivity extends AppCompatActivity
 
   @Override
   public synchronized void onStop() {
-    LOGGER.d("onStop " + this);
+    Log.d("ttd", "onStop " + this);
     super.onStop();
   }
 
   @Override
   public synchronized void onDestroy() {
-    LOGGER.d("onDestroy " + this);
+    Log.d("ttd", "onDestroy " + this);
     super.onDestroy();
   }
 
@@ -466,7 +540,7 @@ public abstract class CameraActivity extends AppCompatActivity
     for (int i = 0; i < planes.length; ++i) {
       final ByteBuffer buffer = planes[i].getBuffer();
       if (yuvBytes[i] == null) {
-        LOGGER.d("Initializing buffer %d at size %d", i, buffer.capacity());
+        Log.d("ttd", "Initializing buffer "+i+" at size" +buffer.capacity());
         yuvBytes[i] = new byte[buffer.capacity()];
       }
       buffer.get(yuvBytes[i]);
@@ -499,7 +573,7 @@ public abstract class CameraActivity extends AppCompatActivity
   @Override
   public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
     setUseNNAPI(isChecked);
-    LOGGER.d("isChecked " + isChecked);
+    Log.d("ttd", "isChecked " + isChecked);
     if (isChecked) apiSwitchCompat.setText("NNAPI");
     else apiSwitchCompat.setText("TFLITE");
   }
@@ -526,14 +600,17 @@ public abstract class CameraActivity extends AppCompatActivity
   }
 
   protected void showFrameInfo(String frameInfo) {
+    Log.d("ttd","showFrameInfo");
     frameValueTextView.setText(frameInfo);
   }
 
   protected void showCropInfo(String cropInfo) {
+    Log.d("ttd","showCropInfo");
     cropValueTextView.setText(cropInfo);
   }
 
   protected void showInference(String inferenceTime) {
+    Log.d("ttd","showInference");
     inferenceTimeTextView.setText(inferenceTime);
   }
 
@@ -548,4 +625,7 @@ public abstract class CameraActivity extends AppCompatActivity
   protected abstract void setNumThreads(int numThreads);
 
   protected abstract void setUseNNAPI(boolean isChecked);
+
+  protected abstract void fakePreviewSizeChosen();
+  protected abstract void fakeProcessImage();
 }

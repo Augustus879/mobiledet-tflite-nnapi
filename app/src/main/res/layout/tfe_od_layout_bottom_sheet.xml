@@ -76,7 +76,6 @@
     </LinearLayout>
 
 
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -182,4 +181,10 @@
             android:text="TFLITE"
             android:textColor="@android:color/black" />
     </LinearLayout>
+
+    <Button
+        android:id="@+id/local_image_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="local image" />
 </LinearLayout>
