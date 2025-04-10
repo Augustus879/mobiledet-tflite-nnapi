@@ -28,7 +28,7 @@ android {
     }
     defaultConfig {
         ndk {
-            abiFilters "armeabi-v7a", "arm64-v8a" // 可能缺少 x86 等
+            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
         }
     }
 }

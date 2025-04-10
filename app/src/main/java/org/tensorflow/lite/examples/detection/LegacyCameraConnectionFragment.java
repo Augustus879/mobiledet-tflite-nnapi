@@ -69,7 +69,7 @@ public class LegacyCameraConnectionFragment extends Fragment {
         public void onSurfaceTextureAvailable(
             final SurfaceTexture texture, final int width, final int height) {
           availableSurfaceTexture = texture;
-          //startCamera();
+          startCamera();
         }
 
         @Override
@@ -121,7 +121,7 @@ public class LegacyCameraConnectionFragment extends Fragment {
 
     if (textureView.isAvailable()) {
 
-      //startCamera();
+      startCamera();
     } else {
       textureView.setSurfaceTextureListener(surfaceTextureListener);
     }
